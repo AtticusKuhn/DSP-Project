@@ -1,5 +1,5 @@
 {
-  description = "Julia environment for L314 DSP assignment 1";
+  description = "Julia environment for L314 DSP Project";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -11,13 +11,13 @@
       devShells = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          julia = pkgs.julia_111.withPackages [
+          julia = pkgs.julia-bin.withPackages [
             "DSP"
             "FFTW"
             "Plots"
             "Pluto"
-            "HDF5"
-            "WAV"
+            "Images"
+            "ImageShow"
           ];
         in {
           default = pkgs.mkShell {
