@@ -1,0 +1,16 @@
+# Provided data 
+/dataset/
+/papers/
+/assignment4-mphil.pdf
+/assignment4-mphil.txt
+
+/data/
+
+# Build outputs
+*.pdf
+result
+result-*
+
+.DS_Store
+*~
+*.swp

@@ -35,7 +35,8 @@ show(png)
 
 # ╔═╡ b1c89fe0-6afb-432b-9d5b-8d36450edd31
 # In the Fan and De Queiroz Paper, Z is defined as Z = |A - B - C + D|
-Z(image) = abs.(conv(image, [1.0 -1; -1 1]));
+# Z(image) = abs.(conv(image, [1.0 -1; -1 1]));
+Z(x) = abs.(x[1:end-1, 1:end-1] .- x[2:end, 1:end-1] .- x[1:end-1, 2:end] .+ x[2:end, 2:end])
 
 # ╔═╡ af07c7cb-e647-4747-95dd-acdec110bd2a
 show(Z(png))
@@ -72,11 +73,11 @@ end
 Z1_Z2(image) = let 
 	Z_png = Z(image)
 	H, W = size(Z_png)
-	p = mod1.(1:H, 8)            # position of each row of Z within its block
-	q = mod1.(1:W, 8)            # position of each column of Z within its block
+	p = mod1.(1:H, 8)            
+	q = mod1.(1:W, 8)            
 	
-	Z1 = Z_png[p .== 4, q .== 4]     # within-block centre  (same as Z[4:8:end, 4:8:end])
-	Z2 = Z_png[p .== 8, q .== 8]     # across the grid corner (same as Z[8:8:end, 8:8:end])
+	Z1 = Z_png[p .== 4, q .== 4]      
+	Z2 = Z_png[p .== 8, q .== 8]   
 	(Z1, Z2)
 end;
 
@@ -132,7 +133,93 @@ end
 blocks(x) = [x[i:i+7, j:j+7] for i in 1:8:8(size(x,1)÷8), j in 1:8:8(size(x,2)÷8)];
 
 # ╔═╡ f9e3caf2-54ce-40fd-92ea-4849ec9601ab
+md"
+# MLE for estimating `q`
+"
 
+# ╔═╡ 14485c16-9f3c-4ad0-9a69-9a2f5484e817
+md"
+Equations taken from Fan and De Quieroz.
+```math
+Y^*(m, n)= Y(m, n) + noise
+```
+
+```math
+r_s(m, n, q) = round[Y^*_s(m, n) / q]
+```
+
+```math
+\hat{q}(m, n) = argmax_q L(q) =  argmax_q { \sum_s \log { \sum_k G(Y^*_s(m, n) − r_s(m, n, q) q − k q) } + N \log q } 
+```
+
+```math
+L(m, n, q) =   { \sum_s \log { \sum_k G(Y^*_s(m, n) − r_s(m, n, q) q − k q) } + N \log q }
+```
+```math
+B(m,n) = D(m)D(n)
+```
+
+```math
+D(m) = \text{some nonsense}
+```
+
+
+s = block index. 
+
+k = offset to neighbouring multiples of q. 
+
+```math
+G(x) = e^{−6x^2}/Z \qquad|x| ≤ B(m,n)
+```
+"
+
+# ╔═╡ 1447446c-d959-4b4b-ad17-d48f526b785b
+Y(image) = [dct(B) for B in blocks(image)]
+
+# ╔═╡ ff31f989-b442-4488-8619-f2b0614bcf48
+r(image,s ,m, n, q) = round(Y(image)[m,n][s] / q)
+
+# ╔═╡ 91af9506-df33-4be8-94d2-dcfc7d136e6b
+begin
+	# L = log likelhood
+	D(m) = m == 0 || m == 2 ? 2 : m == 2 || m == 6 ? 2cos(pi/4) : 2cos(pi/8)cos(pi/8)
+	B(m, n) = D(m)D(n)
+	G(x) = exp( - 6 * x^2)
+	# L(image, m, n, q) = let 
+	# hx = div(size(image, 1), 8)
+	# hy= div(size(image, 2), 8)
+	# N = hx * hy
+	# sum(
+	# 	log(
+	# 		sum(
+	# 			G(Y(image)[s][m,n] - r(image, (sx, sy), m ,n,q) * q - k * q)
+	# 			+ N * log(q)
+	# 			for k in -div(B(m, n),q ):(div(B(m, n),q))
+	# 		)
+	# 	)
+	# 	for sx in 1:hx 
+	# 	for sy in 1:hy
+	# )
+	# end
+	function L(c, m, n, q)                     
+        b = B(m, n)
+        K = div(b, q)
+        sum(log(sum(G(y - round(y/q)*q - k*q) for k in -K:K))  # Σ_s Σ_k
+            for y in c) + length(c) * log(q)                                    # + N log q
+	end
+end
+
+# ╔═╡ 488021c6-9576-4d8a-8dd8-f2405c02f254
+begin
+	  coeffs(image, m, n) = [dct(blk .- 128)[m+1, n+1] for blk in blocks(image)]
+	qhat(image, m, n) = (c = coeffs(image, m, n); argmax(q -> L(c, m, n, q), 1:60))
+end
+
+# ╔═╡ cd385154-9eea-4005-bbeb-a2fa1f524dec
+qhat(jpegs[75], 0, 1)
+
+# ╔═╡ 4ea661d0-095b-46a6-a227-7b0fb58b7237
+qhat(jpegs[50], 0, 1)
 
 # ╔═╡ Cell order:
 # ╠═1ee3c82e-e335-11f1-10fc-d95d9f4d3297
@@ -150,4 +237,11 @@ blocks(x) = [x[i:i+7, j:j+7] for i in 1:8:8(size(x,1)÷8), j in 1:8:8(size(x,2)�
 # ╠═e9f07e01-e31c-46b7-a65b-9efe7ca917db
 # ╠═f6aeb3c3-32b1-4cc6-936d-63457f7f7a88
 # ╠═7d9808af-2d95-4d25-8022-31aa864f35c1
-# ╠═f9e3caf2-54ce-40fd-92ea-4849ec9601ab
+# ╟─f9e3caf2-54ce-40fd-92ea-4849ec9601ab
+# ╠═14485c16-9f3c-4ad0-9a69-9a2f5484e817
+# ╠═1447446c-d959-4b4b-ad17-d48f526b785b
+# ╠═ff31f989-b442-4488-8619-f2b0614bcf48
+# ╠═91af9506-df33-4be8-94d2-dcfc7d136e6b
+# ╠═488021c6-9576-4d8a-8dd8-f2405c02f254
+# ╠═cd385154-9eea-4005-bbeb-a2fa1f524dec
+# ╠═4ea661d0-095b-46a6-a227-7b0fb58b7237
