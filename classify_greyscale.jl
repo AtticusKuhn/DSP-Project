@@ -37,6 +37,9 @@ Z1_Z2(image) = let
 	(Z1, Z2)
 end;
 
+# ╔═╡ dc8b2699-e0ad-488a-bd77-6dd7ac32ea64
+size(Z(png))
+
 # ╔═╡ 7b4c6a68-89e5-4f18-b158-f1e1e5cbab3d
     zhist(z) = [count(==(v), z) for v in 0:510] ./ length(z)
 
@@ -75,7 +78,7 @@ end
 function pf_spectrum(image, u, v, q2; K = 30)
     k = round.(Int, cuv(image, u, v) ./ q2)
     h = [count(==(n), k) for n in -K:K] ./ length(k)
-    abs.(rfft(h .- mean(h)))
+    abs.(rfft(h))
 end
 
 
@@ -254,6 +257,7 @@ end
 # ╠═2511b0aa-e7f7-11f1-8570-1da92e9b9b0a
 # ╠═5f4cb233-c477-4558-902f-a990f0137606
 # ╠═41ee7ebb-ee81-4459-b032-7f4ea18d9a5c
+# ╠═dc8b2699-e0ad-488a-bd77-6dd7ac32ea64
 # ╠═7b4c6a68-89e5-4f18-b158-f1e1e5cbab3d
 # ╠═5edb9511-5e47-43d9-afcf-fcb8ec2f066c
 # ╠═b71150ce-b273-4ede-809a-f109ddc2d215

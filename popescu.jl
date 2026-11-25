@@ -22,9 +22,18 @@ end
 # ╔═╡ eefe1cb6-90e3-4253-8640-017fe282c27c
 begin
 	qs = [50, 60, 70, 75,80, 85, 90, 95]
-	single_jpegs = Dict(q => Float64.(rawview(channelview(load("./data/grey_exp/train01_q$(q).png")))) for q in qs)
-	double_jpegs = Dict((q1, q2) => Float64.(rawview(channelview(load("./data/grey_double/train01_q$(q1)_q$(q2).png")))) for q1 in qs for q2 in qs)
-	png = Float64.(rawview(channelview(load("./data/grey_exp/train01_grey.png"))))
+	ns = 1:5
+	load_grey(path) = Float64.(rawview(channelview(load(path))))
+	name(n) = "train$(lpad(n, 2, '0'))"
+	# Images are loaded lazily from disk on each access. Preloading all
+	# 5*(8+64+1) = 365 images as Float64 (~24 MB each) needs ~9 GB of RAM.
+	struct LazyImages{F}
+		path::F
+	end
+	Base.getindex(L::LazyImages, k...) = load_grey(L.path(k...))
+	single_jpegs = LazyImages((n, q) -> "./data/grey_exp/$(name(n))_q$(q).png")
+	double_jpegs = LazyImages((n, q1, q2) -> "./data/grey_double/$(name(n))_q$(q1)_q$(q2).png")
+	pngs = LazyImages(n -> "./data/grey_exp/$(name(n))_grey.png")
 end;
 
 # ╔═╡ ea971183-d0c9-4148-9b31-2a09dd50e954
@@ -37,8 +46,15 @@ show(image) = Gray.(image ./ maximum(image))
 # ╔═╡ b5eb1354-44c9-45a3-b9ad-3625a3498b6e
 begin
 	Y(image) = [dct(B) for B in blocks(image)]
-	c01(image) = [y[1, 2] for y in Y(image)]
-	  cuv(image, u, v) = [y[u+1, v+1] for y in Y(image)]
+	# Orthonormal 1-D DCT-II basis vector (same normalisation as FFTW's dct / JPEG)
+	dct_basis(u) = [(u == 0 ? sqrt(1/8) : sqrt(2/8)) * cos((2x + 1) * u * π / 16) for x in 0:7]
+	# Single coefficient (u,v) of every 8x8 block, without computing the full DCT
+	function cuv(image, u, v)
+		bu, bv = dct_basis(u), dct_basis(v)
+		[dot(bu, view(image, i:i+7, j:j+7), bv)
+		 for i in 1:8:8(size(image,1)÷8), j in 1:8:8(size(image,2)÷8)]
+	end
+	c01(image) = cuv(image, 0, 1)
 end
 
 
@@ -47,7 +63,26 @@ end
 function pf_spectrum(image, u, v, q2; K = 30)
     k = round.(Int, cuv(image, u, v) ./ q2)
     h = [count(==(n), k) for n in -K:K] ./ length(k)
-    abs.(rfft(h .- mean(h)))
+    # abs.(rfft(h .- mean(h)))
+    abs.(rfft(h))
+end
+
+# ╔═╡ af4bdf3f-f1cd-442c-82d2-80dd732db512
+begin
+	# Discrete Laplacian (two-sided geometric) fitted by maximum likelihood to the
+	# quantised values k, evaluated on -K:K. Same normalisation as h.
+	function laplace_fit(k, K)
+		p0 = mean(k .== 0)
+		r  = 1 - 1 / mean(abs.(k[k .!= 0]))
+		[n == 0 ? p0 : (1 - p0) * (1 - r) * r^(abs(n) - 1) / 2 for n in -K:K]
+	end
+
+	# Spectrum of the histogram after removing the fitted Laplacian envelope
+	function residual_spectrum(image, u, v, q2; K = 30)
+		k = round.(Int, cuv(image, u, v) ./ q2)
+		h = [count(==(n), k) for n in -K:K] ./ length(k)
+		abs.(rfft(h .- laplace_fit(k, K)))
+	end
 end
 
 
@@ -79,9 +114,10 @@ end
 
 begin
 	q_level_1 = 75
-	p2 = plot(vals, max.(c_hist(c01(single_jpegs[q_level_1]), vals), 1e-4), label="q=$(q_level_1)", title="Histogram of Y(0,1)", yscale=:log10)
+	n_img = 1
+	p2 = plot(vals, max.(c_hist(c01(single_jpegs[n_img, q_level_1]), vals), 1e-4), label="q=$(q_level_1)", title="Histogram of Y(0,1)", yscale=:log10)
 	for q in qs 
-		plot!(p2, vals, max.(c_hist(c01(double_jpegs[(q_level_1, q)]), vals), 1e-4), label="q=$((q_level_1, q))", yscale=:log10)
+		plot!(p2, vals, max.(c_hist(c01(double_jpegs[n_img, q_level_1, q]), vals), 1e-4), label="q=$((q_level_1, q))", yscale=:log10)
 	end
 	p2
 end
@@ -89,9 +125,9 @@ end
 # ╔═╡ a95e67ab-a811-4c56-a2c8-2d72edf736e5
 
 begin
-	p3 = plot(abs.(rfft(c_hist(c01(single_jpegs[q_level_1]), vals))), label="q=$(q_level_1)", title="Histogram of Y(0,1)")
+	p3 = plot(abs.(rfft(c_hist(c01(single_jpegs[n_img, q_level_1]), vals))), label="q=$(q_level_1)", title="Histogram of Y(0,1)")
 	for q in qs 
-		plot!(p3, abs.(rfft(c_hist(c01(double_jpegs[(q_level_1, q)]), vals))), label="q=$((q_level_1, q))")
+		plot!(p3, abs.(rfft(c_hist(c01(double_jpegs[n_img, q_level_1, q]), vals))), label="q=$((q_level_1, q))")
 	end
 	p3
 end
@@ -99,11 +135,43 @@ end
 # ╔═╡ f2d6c622-5e08-49f2-b5af-b3224ac57b21
 #pf_spectrum(image, u, v, q2; K = 30)
 begin
-	p6 = plot(pf_spectrum(single_jpegs[q_level_1], 0, 1, qstep(q_level_1, 0, 1)), label="q=$(q_level_1)", title="Histogram of Y(0,1)")
+	p6 = plot(pf_spectrum(single_jpegs[n_img, q_level_1], 0, 1, qstep(q_level_1, 0, 1)), label="q=$(q_level_1)", title="Histogram of Y(0,1)")
 	for q in qs 
-		plot!(p6, pf_spectrum(double_jpegs[(q_level_1, q)], 0, 1, qstep(q, 0, 1)), label="q=$((q_level_1, q))")
+		plot!(p6, pf_spectrum(double_jpegs[n_img, q_level_1, q], 0, 1, qstep(q, 0, 1)), label="q=$((q_level_1, q))")
 	end
 	p6
+end
+
+# ╔═╡ 714ab274-125e-4662-8182-364094eaed29
+# Overlay of all single- and double-compressed images.
+# Colour: R = 0 single / 1 double, B = first quality, G = second quality (0 if single)
+begin
+	qnorm(q) = (q - minimum(qs)) / (maximum(qs) - minimum(qs))
+	p7 = plot(title="PF spectrum of Y(0,1), all images", xlabel="frequency bin", legend=false, xlims=(0, Inf))
+	for n in ns, q1 in qs, q2 in qs
+		plot!(p7, pf_spectrum(double_jpegs[n, q1, q2], 0, 1, qstep(q2, 0, 1)),
+			color=RGB(1, qnorm(q2), qnorm(q1)), alpha=0.4)
+	end
+	for n in ns, q in qs
+		plot!(p7, pf_spectrum(single_jpegs[n, q], 0, 1, qstep(q, 0, 1)),
+			color=RGB(0, 0, qnorm(q)), alpha=0.6, linewidth=2)
+	end
+	p7
+end
+
+# ╔═╡ 31730b1b-d0b0-4ca0-ad2e-fe0e1ced66e0
+# Same overlay and colours as p7, but with the fitted Laplacian removed first
+begin
+	p8 = plot(title="Residual spectrum of Y(0,1), all images", xlabel="frequency bin", legend=false, xlims=(0, Inf))
+	for n in ns, q1 in qs, q2 in qs
+		plot!(p8, residual_spectrum(double_jpegs[n, q1, q2], 0, 1, qstep(q2, 0, 1)),
+			color=RGB(1, qnorm(q2), qnorm(q1)), alpha=0.4)
+	end
+	for n in ns, q in qs
+		plot!(p8, residual_spectrum(single_jpegs[n, q], 0, 1, qstep(q, 0, 1)),
+			color=RGB(0, 0, qnorm(q)), alpha=0.6, linewidth=2)
+	end
+	p8
 end
 
 # ╔═╡ b6f47eef-d354-4cfb-811b-69ab91682894
@@ -111,7 +179,7 @@ end
 begin
 	p4 = plot([0], label="q=$(q_level_1)", title="Histogram of Y(0,1)")
 	for q in qs 
-		plot!(p4, abs.(rfft(c_hist(c01(double_jpegs[(q_level_1, q)]), vals))) .- abs.(rfft(c_hist(c01(single_jpegs[q]), vals))), label="q=$((q_level_1, q))")
+		plot!(p4, abs.(rfft(c_hist(c01(double_jpegs[n_img, q_level_1, q]), vals))) .- abs.(rfft(c_hist(c01(single_jpegs[n_img, q]), vals))), label="q=$((q_level_1, q))")
 	end
 	p4
 end
@@ -120,7 +188,7 @@ end
 begin
 	p5 = plot([0], label="q=$(q_level_1)", title="Histogram of Y(0,1)")
 	for q in qs 
-		plot!(p5, abs.(rfft(c_hist(c01(double_jpegs[(q, q_level_1)]), vals))) .- abs.(rfft(c_hist(c01(single_jpegs[q_level_1]), vals))), label="q=$((q, q_level_1))")
+		plot!(p5, abs.(rfft(c_hist(c01(double_jpegs[n_img, q, q_level_1]), vals))) .- abs.(rfft(c_hist(c01(single_jpegs[n_img, q_level_1]), vals))), label="q=$((q, q_level_1))")
 	end
 	p5
 end
@@ -132,10 +200,13 @@ end
 # ╠═539b8fd3-f82d-442f-8fb9-757757e31b3a
 # ╠═b5eb1354-44c9-45a3-b9ad-3625a3498b6e
 # ╠═7192fe57-1a4f-44cf-ae26-ecd123c20719
+# ╠═af4bdf3f-f1cd-442c-82d2-80dd732db512
 # ╠═15dfa605-2ae7-4c68-861d-c27810806929
 # ╠═5e6157fa-c8f3-41e2-b760-cf1e93aae98a
 # ╠═fdac42f3-0c2a-445b-b03c-7b07e3fb3730
 # ╠═a95e67ab-a811-4c56-a2c8-2d72edf736e5
 # ╠═f2d6c622-5e08-49f2-b5af-b3224ac57b21
+# ╠═714ab274-125e-4662-8182-364094eaed29
+# ╠═31730b1b-d0b0-4ca0-ad2e-fe0e1ced66e0
 # ╠═b6f47eef-d354-4cfb-811b-69ab91682894
 # ╠═1a707304-9f9d-41ed-b6e0-a0e48636d67e

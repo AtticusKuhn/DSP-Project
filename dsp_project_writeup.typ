@@ -3,13 +3,69 @@
 #import "@preview/wordometer:0.1.5": word-count, total-words 
 
 #show: word-count
+#let argmax = $op("arg max", limits: #true)$
 Word count: #total-words / 4000
 = DSP Project
 
 #outline()
 == Introduction
+I read and implemented the techniques from the works of
+Fan @Fan, Neelamani @Neelamani, and Popescu @Popescu
+on forensic analysis of JPEG-compressed images.
+
+Each of the existing works presents a different technique
+for JPEG analysis:
+- Fan presents a technique for detecting JPEG compression from cross-block differences, and an MLE for quantisation factor $Q$.
+- Neelamani explains the histogram patterns of JPEG-compressed images.
+- Popescu explains a pattern that characterises double-compressed images.
+
+I calibrated the techniques on a synthetic dataset of images with known compression histories, and then
+I applied those techniques on a testing dataset of real-world images of unknown compression (15 coloured and 15
+greyscale). I classified each image into one of three categories:
+1. Uncompressed
+2. Single-compressed
+3. Double-compressed
+
 == Greyscale Images
+=== Creating a Synthetic Dataset
+
+In order to calibrate the existing techniques, and to demonstrate the reliability of the techniques, I
+created a synthetic dataset of images with known compression histories.
+
+`./data/grey_exp/train$N_q$Q.png` is training image $N$, compressed to quality level $Q$.
+
+`./data/grey_double/train$N_q$Q1_q$Q2.png` is training image $N$, first compressed to quality level $Q_1$, and then compressed to quality level $Q_2$.
+
+The dataset was generated from the five training images provided with the assigment.
+
 === Estimating Compression from Cross-Boundary Differences
+
+Fan and De Quieroz demonstrate that in a JPEG-compressed image, pixel-difference
+across block-boundaries are statistically different from pixel-differences
+within blocks. They define a cross-boundary metric $Z$ as
+
+```julia
+Z(image) = abs.(conv(image, [1.0 -1; -1 1]))
+Z1_Z2(image) = let 
+	Z_png = Z(image)
+	H, W = size(Z_png)
+	p = mod1.(1:H, 8)            
+	q = mod1.(1:W, 8)            
+	(Z_png[p .== 4, q .== 4],Z_png[p .== 8, q .== 8])
+end;
+zhist(z) = [count(==(v), z) for v in 0:510] ./ length(z)
+# In Fan and De Quieroz, \[K = \sum_n | H_I(n) - H_{II}(n)|\]
+FQ_K(image) = let (z1, z2) = Z1_Z2(image)
+    sum(abs.(zhist(z1) .- zhist(z2)))
+end
+```
+#figure(
+  image("k_vs_jpeg_quality.svg", width: 100%),
+    caption: [$K$ vs JPEG quality],
+) <fig:k-jpeg>
+
+
+
 
 #figure(
   table(
@@ -32,11 +88,44 @@ Word count: #total-words / 4000
     [grey14], [0.0111], [Uncompressed],
     [grey15], [0.4974], [JPEG compressed],
   ),
-  caption: [Fan–de Queiroz cross-boundary difference for each greyscale test image.],
+    caption: [Fan & de Queiroz cross-boundary difference for each greyscale test image.],
 ) <tab:cross-boundary>
 
 
 === Estimating Quantisation Factor $Q$
+
+Fan and de Quieroz prove a formual for the MLE of $hat(q)(u,v)$, which is the quantisation
+factor in JPEG compression.
+
+Their method uses the following formula, which I implemented in Julia:
+
+$ r(i,s,m,n,q) = floor.l (Y(i)[m, n][s]) / q floor.r $
+$ G(x) = e^(-6 x^2) $
+$ L(c,m, n, q) = sum_(y in c) log(sum_(k = -K)^K G(y - floor.l y / q floor.r q + k q)) + |c| log(q)  $
+$ hat(q)(i, m, n) = argmax_(q) L("coeffs"(i, m, n), m, n, q) $
+```julia
+begin
+	r(image,s ,m, n, q) = round(Y(image)[m,n][s] / q)
+	D(m) = m == 0 || m == 4 ? 2 : m == 2 || m == 6 ? 2cos(pi/4) : 2cos(pi/8)cos(pi/8)
+	B(m, n) = D(m)D(n)
+	G(x) = exp( - 6 * x^2)
+	function L(c, m, n, q)                     
+        b = B(m, n)
+        K = div(b, q)
+        sum(log(sum(G(y - round(y/q)*q - k*q) for k in -K:K))  
+            for y in c) + length(c) * log(q)                                    # + N log q
+	end
+	qhat(image, m, n) = (c = coeffs(image, m, n); argmax(q -> L(c, m, n, q), 1:60))
+end
+```
+
+#figure(
+  image("Q_vs_Qhat.svg", width: 100%),
+    caption: [$Q$ vs $hat(Q)$],
+) <fig:Q-vs-Qhat>
+
+
+
 
 #figure(
   text(size: 8pt, table(
@@ -70,6 +159,16 @@ Word count: #total-words / 4000
 
 === Single-Compression vs Double-Compression
 
+Popescu gives a characterisation of certain features associated with double-compressed JPEGs, as opposed
+to single-compressed JPEGs.
+#figure(
+    image("pf_spectrum.png", width: 100%),
+    caption: [PF spectrum of single vs double compressed images],
+) <fig:Q-vs-Qhat>
+
+
+
+
 #figure(
   text(size: 7pt, table(
     columns: 10,
@@ -96,7 +195,7 @@ Word count: #total-words / 4000
     [grey14], [--], [0.0005 (31)], [0.0007 (29)], [--], [--], [0.0014 (31)], [--], [--], [uncompressed],
     [grey15], [0.0032 (25)], [0.0041 (30)], [0.0046 (31)], [0.0024 (18)], [0.0031 (17)], [0.0025 (22)], [0.0029 (29)], [0.0319 (31)], [single-compressed],
   )),
-  caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses; -- means no peak above the spectral envelope. Images ruled uncompressed in @tab:cross-boundary are labelled uncompressed; the remaining images are labelled double-compressed if their requantised histograms show periodic notches (@fig:double-hist), and single-compressed otherwise.],
+  caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses; -- means no peak above the spectral envelope. Images are labelled double-compressed if their requantised histograms show periodic notches (@fig:double-hist), and single-compressed otherwise.],
 ) <tab:double-q>
 
 #figure(
@@ -105,3 +204,5 @@ Word count: #total-words / 4000
 ) <fig:double-hist>
 
 
+
+#bibliography("bib.bib")
