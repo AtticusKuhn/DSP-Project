@@ -193,6 +193,38 @@ begin
 	p5
 end
 
+# ╔═╡ e43ad705-836c-4e0c-a8cf-045c80061e49
+# Histograms for several AC coefficients, one panel per
+# original image, with every single/double-compressed derivative overlaid.
+# Colour: R = 0 single / 1 double, B = (last) JPEG quality, G = AC coefficient
+let K = 15
+	ac_coefs = [(0, 1), (1, 0), (1, 1), (0, 2), (2, 0)]
+	cnorm(i) = (i - 1) / max(length(ac_coefs) - 1, 1)
+	function add_hist!(p, img, q, col)
+		for (ci, c) in enumerate(ac_coefs)
+			k = round.(Int, cuv(img, c...) ./ qstep(q, c...))
+			h = [count(==(j), k) for j in -K:K] ./ length(k)
+			plot!(p, -K:K, max.(h, 1e-5); color = col(cnorm(ci)))
+		end
+	end
+	newplot(t) = plot(title = t, yscale = :log10, legend = false)
+	# Row n: [single-compressed | double-compressed], both derived from trainNN
+	ps = mapreduce(vcat, ns) do n
+		ps_single = newplot("$(name(n)) single")
+		for q in qs
+			add_hist!(ps_single, single_jpegs[n, q], q, g -> RGB(0, g, qnorm(q)))
+		end
+		ps_double = newplot("$(name(n)) double")
+		for q1 in qs, q2 in qs
+			add_hist!(ps_double, double_jpegs[n, q1, q2], q2, g -> RGB(1, g, qnorm(q2)))
+		end
+		[ps_single, ps_double]
+	end
+	plot(ps...; layout = (length(ns), 2), size = (1200, 300 * length(ns)),
+	     link = :y,
+	     plot_title = "Histograms of round(c_uv / q2), AC coefficients")
+end
+
 # ╔═╡ Cell order:
 # ╠═32e2bf36-e749-11f1-bcb7-a3a853c4441d
 # ╠═eefe1cb6-90e3-4253-8640-017fe282c27c
@@ -210,3 +242,4 @@ end
 # ╠═31730b1b-d0b0-4ca0-ad2e-fe0e1ced66e0
 # ╠═b6f47eef-d354-4cfb-811b-69ab91682894
 # ╠═1a707304-9f9d-41ed-b6e0-a0e48636d67e
+# ╠═e43ad705-836c-4e0c-a8cf-045c80061e49

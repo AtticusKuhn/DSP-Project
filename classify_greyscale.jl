@@ -38,7 +38,7 @@ Z1_Z2(image) = let
 end;
 
 # ╔═╡ dc8b2699-e0ad-488a-bd77-6dd7ac32ea64
-size(Z(png))
+# size(Z(png))
 
 # ╔═╡ 7b4c6a68-89e5-4f18-b158-f1e1e5cbab3d
     zhist(z) = [count(==(v), z) for v in 0:510] ./ length(z)
@@ -193,7 +193,7 @@ begin
 	for c in coefs
 		for (i, img) in enumerate(images)
 			q_esimate = qhat(img, c[1], c[2])
-			plot!(p7, pf_spectrum(img, c[1], c[2], q_esimate), label="image $i, c=$c")
+			plot!(p7, pf_spectrum(img, c[1], c[2], q_esimate), label="image $i, c=$c", color=i)
 		end
 	end
 	p7

@@ -5,7 +5,12 @@
 #show: word-count
 #let argmax = $op("arg max", limits: #true)$
 Word count: #total-words / 4000
-= DSP Project
+
+CRSid: ak2518
+
+Author: Atticus Kuhn
+
+= DSP Project: Identifying JPEG-Compression in Images
 
 #outline()
 == Introduction
@@ -18,6 +23,8 @@ for JPEG analysis:
 - Fan presents a technique for detecting JPEG compression from cross-block differences, and an MLE for quantisation factor $Q$.
 - Neelamani explains the histogram patterns of JPEG-compressed images.
 - Popescu explains a pattern that characterises double-compressed images.
+- Lewis @Lewis provides an algorithm for exact JPEG recompression. However, I did not implement this algorithm.
+
 
 I calibrated the techniques on a synthetic dataset of images with known compression histories, and then
 I applied those techniques on a testing dataset of real-world images of unknown compression (15 coloured and 15
@@ -166,6 +173,11 @@ to single-compressed JPEGs.
     caption: [PF spectrum of single vs double compressed images],
 ) <fig:Q-vs-Qhat>
 
+#figure(
+    image("double_vs_single_histogram.png", width: 100%),
+    caption: [Histogram of single-compressed vs double-compressed],
+) <fig:d-vs-s-hist>
+
 
 
 
@@ -195,7 +207,7 @@ to single-compressed JPEGs.
     [grey14], [--], [0.0005 (31)], [0.0007 (29)], [--], [--], [0.0014 (31)], [--], [--], [uncompressed],
     [grey15], [0.0032 (25)], [0.0041 (30)], [0.0046 (31)], [0.0024 (18)], [0.0031 (17)], [0.0025 (22)], [0.0029 (29)], [0.0319 (31)], [single-compressed],
   )),
-  caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses; -- means no peak above the spectral envelope. Images are labelled double-compressed if their requantised histograms show periodic notches (@fig:double-hist), and single-compressed otherwise.],
+  caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses.],
 ) <tab:double-q>
 
 #figure(
@@ -203,6 +215,115 @@ to single-compressed JPEGs.
     caption: [Histograms of the requantised coefficients $c_(u v) / q_2$ for each greyscale test image. Periodic notches indicate double compression.],
 ) <fig:double-hist>
 
+
+== Colour Images
+
+I converted the `./dataset/colourNN.png` images into greyscale (via
+RGB -> YCrCb coordinate conversion) and
+ran the same greyscale analysis on them. Thus, I will
+not repeat the same explanation as in the greyscale
+section.
+
+#figure(
+  table(
+    columns: 3,
+    align: (center, right, left),
+    table.header[Image][Cross-boundary difference][Compression ruling],
+    [colour01], [0.8676], [JPEG compressed],
+    [colour02], [0.9847], [JPEG compressed],
+    [colour03], [0.0191], [Uncompressed],
+    [colour04], [0.5543], [JPEG compressed],
+    [colour05], [0.0182], [Uncompressed],
+    [colour06], [1.0526], [JPEG compressed],
+    [colour07], [0.0207], [Uncompressed],
+    [colour08], [1.1144], [JPEG compressed],
+    [colour09], [0.6459], [JPEG compressed],
+    [colour10], [0.8355], [JPEG compressed],
+    [colour11], [0.0210], [Uncompressed],
+    [colour12], [0.6469], [JPEG compressed],
+    [colour13], [1.1507], [JPEG compressed],
+    [colour14], [0.0244], [Uncompressed],
+    [colour15], [1.2634], [JPEG compressed],
+  ),
+    caption: [Fan & de Queiroz cross-boundary difference for each colour test image (converted to greyscale).],
+) <tab:cross-boundary-colour>
+
+#figure(
+  text(size: 8pt, table(
+    columns: 12,
+    align: (left,) + (right,) * 11,
+    table.header(
+      table.cell(rowspan: 2, align: horizon)[Image],
+      table.cell(rowspan: 2, align: horizon)[$hat(Q)$],
+      table.cell(colspan: 9, align: center)[Per-coefficient $Q$ estimate],
+      table.cell(rowspan: 2, align: horizon)[Spread],
+      [1], [2], [3], [4], [5], [6], [7], [8], [9],
+    ),
+    [colour01], [50.0], [50.0], [50.0], [50.0], [50.0], [50.0], [50.0], [50.0], [50.0], [50.0], [0.00],
+    [colour02], [88.1], [87.5], [86.4], [87.5], [87.5], [90.0], [89.3], [89.3], [88.5], [87.5], [3.64],
+    [colour03\*], [96.2], [96.9], [95.5], [95.8], [95.8], [95.0], [96.4], [96.4], [96.2], [96.9], [1.88],
+    [colour04], [84.3], [84.4], [81.8], [83.3], [83.3], [85.0], [85.7], [85.7], [84.6], [84.4], [3.90],
+    [colour05\*], [96.2], [96.9], [95.5], [95.8], [95.8], [95.0], [96.4], [96.4], [96.2], [96.9], [1.88],
+    [colour06], [63.6], [90.6], [77.3], [54.2], [54.2], [55.0], [53.6], [53.6], [76.9], [53.1], [37.50],
+    [colour07\*], [96.2], [96.9], [95.5], [95.8], [95.8], [95.0], [96.4], [96.4], [96.2], [96.9], [1.88],
+    [colour08], [69.9], [68.8], [68.2], [70.8], [70.8], [70.0], [71.4], [71.4], [69.2], [68.8], [3.25],
+    [colour09], [63.6], [62.5], [63.6], [62.5], [62.5], [65.0], [64.3], [64.3], [65.4], [62.5], [2.88],
+    [colour10], [75.4], [75.0], [77.3], [75.0], [75.0], [75.0], [75.0], [75.0], [76.9], [75.0], [2.27],
+    [colour11\*], [96.2], [96.9], [95.5], [95.8], [95.8], [95.0], [96.4], [96.4], [96.2], [96.9], [1.88],
+    [colour12], [92.8], [93.8], [90.9], [91.7], [91.7], [95.0], [92.9], [92.9], [92.3], [93.8], [4.09],
+    [colour13], [64.8], [96.9], [59.1], [58.3], [58.3], [60.0], [60.7], [60.7], [61.5], [59.4], [38.54],
+    [colour14\*], [96.2], [96.9], [95.5], [95.8], [95.8], [95.0], [96.4], [96.4], [96.2], [96.9], [1.88],
+    [colour15], [69.9], [68.8], [68.2], [70.8], [70.8], [70.0], [71.4], [71.4], [69.2], [68.8], [3.25],
+  )),
+    caption: [Estimated JPEG quality factor $Q$ for each colour test image (converted to greyscale). Images marked \* were ruled uncompressed.],
+) <tab:q-estimate-colour>
+
+
+#figure(
+    image("double_compression_histogram_colour.svg", width: 100%),
+    caption: [Histogram coloured images],
+) <fig:d-vs-s-hist>
+
+
+== Final Conclusions
+#figure(
+  table(
+    columns: 2,
+    align: (center, left),
+    table.header[Image][Compression ruling],
+    [grey01], [Double compressed],
+    [grey02],  [Uncompressed],
+    [grey03], [Single Compressed],
+    [grey04],  [SingleCompressed],
+    [grey05],  [Uncompressed],
+    [grey06],  [Uncompressed],
+    [grey07],  [Uncompressed],
+    [grey08],  [Single compressed],
+    [grey09],  [Single compressed],
+    [grey10], [Double compressed],
+    [grey11],  [Double Compressed],
+    [grey12],  [Double compressed],
+    [grey13],  [Single compressed],
+    [grey14],  [Uncompressed],
+    [grey15],  [Single compressed],
+    [colour01], [Single compressed],
+    [colour02],  [Double compressed],
+    [colour03], [Uncompressed],
+    [colour04],  [Single compressed],
+    [colour05],  [Uncompressed],
+    [colour06],  [Double compressed],
+    [colour07],  [Uncompressed],
+    [colour08],  [Double compressed],
+    [colour09],  [Single compressed],
+    [colour10], [Single compressed],
+    [colour11],  [Uncompressed],
+    [colour12],  [Single compressed],
+    [colour13],  [Double compressed],
+    [colour14],  [Uncompressed],
+    [colour15],  [JPEG compressed],
+  ),
+    caption: [Final],
+) <tab:final>
 
 
 #bibliography("bib.bib")
