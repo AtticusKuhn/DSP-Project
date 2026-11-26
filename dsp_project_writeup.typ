@@ -1,7 +1,6 @@
-
+#import "@preview/codelst:2.0.2": sourcecode
 
 #import "@preview/wordometer:0.1.5": word-count, total-words 
-
 #show: word-count
 #let argmax = $op("arg max", limits: #true)$
 Word count: #total-words / 4000
@@ -14,7 +13,7 @@ Author: Atticus Kuhn
 
 #outline()
 == Introduction
-I read and implemented the techniques from the works of
+I read and implemented the techniques in Julia from the works of
 Fan @Fan, Neelamani @Neelamani, and Popescu @Popescu
 on forensic analysis of JPEG-compressed images.
 
@@ -39,9 +38,9 @@ greyscale). I classified each image into one of three categories:
 In order to calibrate the existing techniques, and to demonstrate the reliability of the techniques, I
 created a synthetic dataset of images with known compression histories.
 
-`./data/grey_exp/train$N_q$Q.png` is training image $N$, compressed to quality level $Q$.
+`./data/grey_exp/train$NN_q$Q.png` is training image $N$, compressed to quality level $Q$.
 
-`./data/grey_double/train$N_q$Q1_q$Q2.png` is training image $N$, first compressed to quality level $Q_1$, and then compressed to quality level $Q_2$.
+`./data/grey_double/train$NN_q$Q1_q$Q2.png` is training image $N$, first compressed to quality level $Q_1$, and then compressed to quality level $Q_2$.
 
 The dataset was generated from the five training images provided with the assigment.
 
@@ -51,7 +50,9 @@ Fan and De Quieroz demonstrate that in a JPEG-compressed image, pixel-difference
 across block-boundaries are statistically different from pixel-differences
 within blocks. They define a cross-boundary metric $Z$ as
 
-```julia
+
+#figure(
+    sourcecode[```julia
 Z(image) = abs.(conv(image, [1.0 -1; -1 1]))
 Z1_Z2(image) = let 
 	Z_png = Z(image)
@@ -65,11 +66,30 @@ zhist(z) = [count(==(v), z) for v in 0:510] ./ length(z)
 FQ_K(image) = let (z1, z2) = Z1_Z2(image)
     sum(abs.(zhist(z1) .- zhist(z2)))
 end
-```
+    ```],caption:[Julia source-code for computing Fan's $Z$ metric]
+)<code:fan_Z_K>
+
+I calibrated the following decision rule: that
+images with a $K$-score greater than $ K > K_("thresh") = 0.03$ were ruled to be
+JPEG-compressed.
+
 #figure(
   image("k_vs_jpeg_quality.svg", width: 100%),
     caption: [$K$ vs JPEG quality],
 ) <fig:k-jpeg>
+
+#figure(
+  table(
+    columns: 3,
+    align: (left, center, center),
+    table.header(
+      [], [Actually JPEG], [Actually uncompressed],
+    ),
+    [Ruled JPEG], [40], [1],
+    [Ruled uncompressed], [0], [4],
+  ),
+  caption: [Confusion matrix on synthetic training dataset.],
+) <tab:confusion>
 
 
 
@@ -168,10 +188,15 @@ end
 
 Popescu gives a characterisation of certain features associated with double-compressed JPEGs, as opposed
 to single-compressed JPEGs.
-#figure(
-    image("pf_spectrum.png", width: 100%),
-    caption: [PF spectrum of single vs double compressed images],
-) <fig:Q-vs-Qhat>
+
+Popescu claims that the Fourier Transform of the histogram of the coefficients of a JPEG will smoothly decay in the form
+of a Laplacian. However, if there is double-compression, the double-quantisation artefacts will appear as
+spikes in the Laplaican envelope. These spikes are visible in @fig:d-vs-s-hist.
+
+// #figure(
+//     image("pf_spectrum.png", width: 100%),
+//     caption: [PF spectrum of single vs double compressed images],
+// ) <fig:Q-vs-Qhat>
 
 #figure(
     image("double_vs_single_histogram.png", width: 100%),
@@ -181,45 +206,80 @@ to single-compressed JPEGs.
 
 
 
-#figure(
-  text(size: 7pt, table(
-    columns: 10,
-    align: (left,) + (right,) * 8 + (left,),
-    table.header(
-      table.cell(rowspan: 2, align: horizon)[Image],
-      table.cell(colspan: 8, align: center)[DCT coefficient $(u, v)$],
-      table.cell(rowspan: 2, align: horizon)[Compression verdict],
-      [$(0, 1)$], [$(0, 2)$], [$(1, 0)$], [$(1, 1)$], [$(1, 2)$], [$(2, 0)$], [$(2, 1)$], [$(2, 2)$],
-    ),
-    [grey01], [--], [--], [--], [0.0002 (31)], [0.0066 (13)], [0.0211 (13)], [--], [--], [double-compressed],
-    [grey02], [0.0020 (30)], [0.0025 (27)], [0.0033 (17)], [0.0032 (23)], [0.0010 (24)], [0.0013 (27)], [0.0049 (31)], [0.0031 (26)], [uncompressed],
-    [grey03], [0.0014 (27)], [0.0000 (29)], [0.0002 (29)], [--], [--], [--], [--], [--], [single-compressed],
-    [grey04], [--], [--], [--], [0.0000 (31)], [--], [--], [--], [--], [single-compressed],
-    [grey05], [0.0043 (25)], [0.0016 (26)], [0.0027 (17)], [0.0037 (28)], [0.0009 (18)], [0.0029 (24)], [0.0027 (30)], [0.0007 (29)], [uncompressed],
-    [grey06], [0.0032 (14)], [0.0027 (31)], [0.0020 (25)], [0.0009 (31)], [--], [--], [0.0002 (27)], [--], [uncompressed],
-    [grey07], [0.0069 (15)], [0.0009 (31)], [0.0029 (31)], [0.0016 (28)], [--], [0.0012 (28)], [0.0031 (31)], [--], [uncompressed],
-    [grey08], [--], [--], [--], [--], [--], [--], [--], [--], [single-compressed],
-    [grey09], [0.0048 (10)], [0.0035 (27)], [0.0039 (21)], [0.0049 (20)], [0.0015 (20)], [0.0028 (29)], [0.0025 (31)], [--], [single-compressed],
-    [grey10], [0.1506 (19)], [0.0644 (22)], [0.1574 (19)], [0.1004 (19)], [0.0480 (31)], [0.0839 (31)], [0.0433 (25)], [--], [double-compressed],
-    [grey11], [--], [0.0086 (31)], [--], [--], [--], [--], [--], [0.0112 (30)], [double-compressed],
-    [grey12], [0.0375 (31)], [--], [0.0024 (31)], [--], [0.0034 (23)], [0.0317 (24)], [0.0011 (28)], [--], [double-compressed],
-    [grey13], [--], [0.0001 (31)], [--], [--], [--], [--], [--], [--], [single-compressed],
-    [grey14], [--], [0.0005 (31)], [0.0007 (29)], [--], [--], [0.0014 (31)], [--], [--], [uncompressed],
-    [grey15], [0.0032 (25)], [0.0041 (30)], [0.0046 (31)], [0.0024 (18)], [0.0031 (17)], [0.0025 (22)], [0.0029 (29)], [0.0319 (31)], [single-compressed],
-  )),
-  caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses.],
-) <tab:double-q>
+// #figure(
+//   text(size: 7pt, table(
+//     columns: 10,
+//     align: (left,) + (right,) * 8 + (left,),
+//     table.header(
+//       table.cell(rowspan: 2, align: horizon)[Image],
+//       table.cell(colspan: 8, align: center)[DCT coefficient $(u, v)$],
+//       table.cell(rowspan: 2, align: horizon)[Compression verdict],
+//       [$(0, 1)$], [$(0, 2)$], [$(1, 0)$], [$(1, 1)$], [$(1, 2)$], [$(2, 0)$], [$(2, 1)$], [$(2, 2)$],
+//     ),
+//     [grey01], [--], [--], [--], [0.0002 (31)], [0.0066 (13)], [0.0211 (13)], [--], [--], [double-compressed],
+//     [grey02], [0.0020 (30)], [0.0025 (27)], [0.0033 (17)], [0.0032 (23)], [0.0010 (24)], [0.0013 (27)], [0.0049 (31)], [0.0031 (26)], [uncompressed],
+//     [grey03], [0.0014 (27)], [0.0000 (29)], [0.0002 (29)], [--], [--], [--], [--], [--], [single-compressed],
+//     [grey04], [--], [--], [--], [0.0000 (31)], [--], [--], [--], [--], [single-compressed],
+//     [grey05], [0.0043 (25)], [0.0016 (26)], [0.0027 (17)], [0.0037 (28)], [0.0009 (18)], [0.0029 (24)], [0.0027 (30)], [0.0007 (29)], [uncompressed],
+//     [grey06], [0.0032 (14)], [0.0027 (31)], [0.0020 (25)], [0.0009 (31)], [--], [--], [0.0002 (27)], [--], [uncompressed],
+//     [grey07], [0.0069 (15)], [0.0009 (31)], [0.0029 (31)], [0.0016 (28)], [--], [0.0012 (28)], [0.0031 (31)], [--], [uncompressed],
+//     [grey08], [--], [--], [--], [--], [--], [--], [--], [--], [single-compressed],
+//     [grey09], [0.0048 (10)], [0.0035 (27)], [0.0039 (21)], [0.0049 (20)], [0.0015 (20)], [0.0028 (29)], [0.0025 (31)], [--], [single-compressed],
+//     [grey10], [0.1506 (19)], [0.0644 (22)], [0.1574 (19)], [0.1004 (19)], [0.0480 (31)], [0.0839 (31)], [0.0433 (25)], [--], [double-compressed],
+//     [grey11], [--], [0.0086 (31)], [--], [--], [--], [--], [--], [0.0112 (30)], [double-compressed],
+//     [grey12], [0.0375 (31)], [--], [0.0024 (31)], [--], [0.0034 (23)], [0.0317 (24)], [0.0011 (28)], [--], [double-compressed],
+//     [grey13], [--], [0.0001 (31)], [--], [--], [--], [--], [--], [--], [single-compressed],
+//     [grey14], [--], [0.0005 (31)], [0.0007 (29)], [--], [--], [0.0014 (31)], [--], [--], [uncompressed],
+//     [grey15], [0.0032 (25)], [0.0041 (30)], [0.0046 (31)], [0.0024 (18)], [0.0031 (17)], [0.0025 (22)], [0.0029 (29)], [0.0319 (31)], [single-compressed],
+//   )),
+//   caption: [Double-compression peak score for each greyscale test image (rows) and DCT coefficient $(u, v)$ (columns), with the index of the peak in the histogram spectrum in parentheses.],
+// ) <tab:double-q>
 
 #figure(
   image("double_compression_histogram.svg", width: 100%),
     caption: [Histograms of the requantised coefficients $c_(u v) / q_2$ for each greyscale test image. Periodic notches indicate double compression.],
 ) <fig:double-hist>
 
+=== `rjpeg` Recompression
+
+`rjpeg` is a tool developed by Lewis for JPEG recompression. I did write my own implementation of it, but rather
+I downloaded and compiled the existing implementation in order to sanity-check my other results. Except in cases
+where `rjpeg` times out, it agrees with my other compressed/uncompressed classifications, and with my estimated $Q$
+quality factor to within $plus.minus 1$.
+
+#figure(
+  text(size: 8pt, table(
+    columns: 5,
+    align: (left, right, right, right, right),
+    table.header(
+      table.cell(rowspan: 2, align: horizon)[Image],
+      table.cell(rowspan: 2, align: horizon)[`rjpeg` QF],
+      table.cell(colspan: 3, align: center)[Y blocks (of 46,128)],
+      [Exact], [Ambiguous], [Infeasible],
+    ),
+    [grey01], [84], [40,525], [5,535], [68],
+    [grey02], [--], [0], [0], [46,128],
+    [grey03], [58], [45,609], [0], [519],
+    [grey04], [65], [46,105], [0], [23],
+    [grey05], [--], [0], [0], [46,128],
+    [grey06], [--], [0], [0], [46,128],
+    [grey07], [--], [0], [0], [46,128],
+    [grey08], [80], [43,641], [1,869], [618],
+    [grey09], [84], [45,959], [0], [169],
+    [grey10], [79], [45,970], [1], [157],
+    [grey11], table.cell(colspan: 4, align: center)[timed out after 15 min],
+    [grey12], [76], [46,080], [5], [43],
+    [grey13], [54], [46,084], [0], [44],
+    [grey14], [--], [0], [0], [46,128],
+    [grey15], [85], [45,453], [0], [675],
+  )),
+  caption: [`rjpeg` results for each greyscale test image (cropped to 1984 × 1488). QF is the IJG quality factor of the last compression; images with every Y block infeasible were never JPEG-compressed.],
+) <tab:rjpeg>
 
 == Colour Images
 
 I converted the `./dataset/colourNN.png` images into greyscale (via
-RGB -> YCrCb coordinate conversion) and
+RGB $arrow.r$ YCrCb coordinate conversion) and
 ran the same greyscale analysis on them. Thus, I will
 not repeat the same explanation as in the greyscale
 section.
@@ -282,7 +342,7 @@ section.
 #figure(
     image("double_compression_histogram_colour.svg", width: 100%),
     caption: [Histogram coloured images],
-) <fig:d-vs-s-hist>
+) <fig:hist-coloured>
 
 
 == Final Conclusions
@@ -320,7 +380,7 @@ section.
     [colour12],  [Single compressed],
     [colour13],  [Double compressed],
     [colour14],  [Uncompressed],
-    [colour15],  [JPEG compressed],
+    [colour15],  [Single compressed],
   ),
     caption: [Final],
 ) <tab:final>

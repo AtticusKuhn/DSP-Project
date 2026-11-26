@@ -68,23 +68,16 @@ function pf_spectrum(image, u, v, q2; K = 30)
 end
 
 # ╔═╡ af4bdf3f-f1cd-442c-82d2-80dd732db512
-begin
-	# Discrete Laplacian (two-sided geometric) fitted by maximum likelihood to the
-	# quantised values k, evaluated on -K:K. Same normalisation as h.
-	function laplace_fit(k, K)
-		p0 = mean(k .== 0)
-		r  = 1 - 1 / mean(abs.(k[k .!= 0]))
-		[n == 0 ? p0 : (1 - p0) * (1 - r) * r^(abs(n) - 1) / 2 for n in -K:K]
-	end
-
-	# Spectrum of the histogram after removing the fitted Laplacian envelope
-	function residual_spectrum(image, u, v, q2; K = 30)
-		k = round.(Int, cuv(image, u, v) ./ q2)
-		h = [count(==(n), k) for n in -K:K] ./ length(k)
-		abs.(rfft(h .- laplace_fit(k, K)))
-	end
+function residual_spectrum(image, u, v, q2; K = 30)
+	spectrum = pf_spectrum(image, u, v, q2; K)
+	bins = 0:K
+	envelope(shape, scale) = spectrum[1] .* exp.(-((bins ./ scale) .^ shape))
+	scales = [exp2.(-5:0.25:12); Inf]
+	candidates = Iterators.product(0.25:0.25:4, scales)
+	fit_error(parameters) = sum(abs2, spectrum .- envelope(parameters...))
+	shape, scale = argmin(fit_error, candidates)
+	spectrum .- envelope(shape, scale)
 end
-
 
 # ╔═╡ 15dfa605-2ae7-4c68-861d-c27810806929
 begin
@@ -160,7 +153,7 @@ begin
 end
 
 # ╔═╡ 31730b1b-d0b0-4ca0-ad2e-fe0e1ced66e0
-# Same overlay and colours as p7, but with the fitted Laplacian removed first
+# Same overlay and colours as p7, with the fitted spectral envelope subtracted
 begin
 	p8 = plot(title="Residual spectrum of Y(0,1), all images", xlabel="frequency bin", legend=false, xlims=(0, Inf))
 	for n in ns, q1 in qs, q2 in qs

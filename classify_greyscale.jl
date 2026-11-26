@@ -199,6 +199,29 @@ begin
 	p7
 end
 
+# ╔═╡ 493b586f-823a-43cd-a1b1-c810ffbe7d1f
+function residual_spectrum(image, u, v, q2; K = 30)
+	spectrum = pf_spectrum(image, u, v, q2; K)
+	bins = 0:K
+	envelope(shape, scale) = spectrum[1] .* exp.(-((bins ./ scale) .^ shape))
+	candidates = Iterators.product(0.25:0.25:4, exp2.(-5:0.25:12))
+	shape, scale = argmin(p -> sum(abs2, spectrum .- envelope(p...)), candidates)
+	spectrum .- envelope(shape, scale)
+end
+
+# ╔═╡ 55dd3acb-c402-4aad-a4a6-a3ff45f0c0f2
+# Same overlay and colours as p7, with the fitted spectral envelope subtracted
+begin
+	p8 = plot(title="Residual spectrum of Y(0,1), all images", xlabel="frequency bin", xlims=(0, Inf))
+	for c in coefs
+		for (i, img) in enumerate(images)
+			q_esimate = qhat(img, c[1], c[2])
+			plot!(p8, residual_spectrum(img, c[1], c[2], q_esimate), label="image $i", color=i)
+		end
+	end
+	p8
+end
+
 # ╔═╡ dcb2ec4d-b19d-44ec-9318-c9838dc17a7c
 begin
     function peak_score(img, m, n; K = 30, w = 3, cutoff = 5)
@@ -277,6 +300,8 @@ end
 # ╠═50bbc063-affe-4cbd-8cfb-d5c24e614d07
 # ╠═cb2a7765-e1a2-45f7-87db-ea55bddf3df9
 # ╠═4fa87e4e-4f47-403a-a608-113a611b8b53
+# ╠═493b586f-823a-43cd-a1b1-c810ffbe7d1f
+# ╠═55dd3acb-c402-4aad-a4a6-a3ff45f0c0f2
 # ╠═dcb2ec4d-b19d-44ec-9318-c9838dc17a7c
 # ╠═ae47021d-4711-4a96-a4d2-068a277d97da
 # ╠═78c8609e-41f8-4714-b7b6-ef5e576bb73d

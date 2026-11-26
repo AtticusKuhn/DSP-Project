@@ -241,6 +241,18 @@ let
         plt
 end
 
+# ╔═╡ 544944c7-c05c-4b3e-9a40-194585138a08
+begin
+	# Confusion Matrix
+	K_thresh = 0.03
+	true_positives = count(FQ_K(jpegs[i, q]) >  K_thresh for q in qs for i in train_ids)
+	true_negatives= count(FQ_K(pngs[i]) < K_thresh for i in train_ids)
+	false_positives= count(FQ_K(pngs[i]) > K_thresh  for i in train_ids)
+	false_negatives = count(FQ_K(jpegs[i, q]) <  K_thresh for q in qs for i in train_ids)
+	
+	[true_positives false_positives ; false_negatives true_negatives]
+end
+
 # ╔═╡ d5a2eff2-09a8-49d5-b713-b0ea97e97ef4
 let
         freqs = [(0,0), (0,1), (1,0), (1,1), (0,2), (2,0), (1,2), (2,1), (2,2)]
@@ -248,7 +260,7 @@ let
         red(i)  = (i - 1) / max(nI - 1, 1)  
         blue(k) = (k - 1) / max(nF - 1, 1)   
 
-        # IJG standard luminance table, and the inverse of libjpeg's quality scaling
+        # IJG standard luminance table
         T_LUM = [16  11  10  16  24  40  51  61
                  12  12  14  19  26  58  60  55
                  14  13  16  24  40  57  69  56
@@ -261,16 +273,16 @@ let
 
         xs, ys, cols = Float64[], Float64[], RGB{Float64}[]
         for i in train_ids
-                for (Q, im) in [[(Qj, jpegs[i, Qj]) for Qj in qs]; (100, pngs[i])]
-                        Ys = [dct(blk .- 128) for blk in blocks(im)]
-                        for (k, (u, v)) in enumerate(freqs)
-                                c = [Yb[u+1, v+1] for Yb in Ys]
-                                qh = argmax(q -> L(c, u, v, q), 1:60)          # q̂(u,v), the step size
-                                push!(xs, Q + 0.4 * (k - (nF + 1) / 2))
-                                push!(ys, alpha_to_Q(qh / T_LUM[u+1, v+1]))   # Q̂ from this coefficient
-                                push!(cols, RGB(red(i), 0, blue(k)))
-                        end
+            for (Q, im) in [[(Qj, jpegs[i, Qj]) for Qj in qs]; (100, pngs[i])]
+                Ys = [dct(blk .- 128) for blk in blocks(im)]
+                for (k, (u, v)) in enumerate(freqs)
+                    c = [Yb[u+1, v+1] for Yb in Ys]
+                    qh = argmax(q -> L(c, u, v, q), 1:60)
+                    push!(xs, Q + 0.4 * (k - (nF + 1) / 2))
+                    push!(ys, alpha_to_Q(qh / T_LUM[u+1, v+1]))
+                    push!(cols, RGB(red(i), 0, blue(k)))
                 end
+            end
         end
 
         plt = scatter(xs, ys; markercolor = cols, markerstrokewidth = 0, label = false,
@@ -315,4 +327,5 @@ end
 # ╠═cd385154-9eea-4005-bbeb-a2fa1f524dec
 # ╠═4ea661d0-095b-46a6-a227-7b0fb58b7237
 # ╠═dbae0c1c-364f-43d8-8744-8509fa8b3fd7
+# ╠═544944c7-c05c-4b3e-9a40-194585138a08
 # ╠═d5a2eff2-09a8-49d5-b713-b0ea97e97ef4
