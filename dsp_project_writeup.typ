@@ -9,7 +9,7 @@ CRSid: ak2518
 
 Author: Atticus Kuhn
 
-= DSP Project: Identifying JPEG-Compression in Images
+= DSP Project: Identifying JPEG Compression in Images
 
 #outline()
 == Introduction
@@ -19,7 +19,7 @@ on forensic analysis of JPEG-compressed images.
 
 Each of the existing works presents a different technique
 for JPEG analysis:
-- Fan presents a technique for detecting JPEG compression from cross-block differences, and an MLE for quantisation factor $Q$.
+- Fan presents a technique for detecting JPEG compression from cross-block differences, and an MLE for the quantisation factor $Q$.
 - Neelamani explains the histogram patterns of JPEG-compressed images.
 - Popescu explains a pattern that characterises double-compressed images.
 - Lewis @Lewis provides an algorithm for exact JPEG recompression. However, I did not implement this algorithm.
@@ -42,13 +42,32 @@ created a synthetic dataset of images with known compression histories.
 
 `./data/grey_double/train$NN_q$Q1_q$Q2.png` is training image $N$, first compressed to quality level $Q_1$, and then compressed to quality level $Q_2$.
 
-The dataset was generated from the five training images provided with the assigment.
+The dataset was generated from the five training images provided with the assignment using 
+@code:bash.
+
+#figure(
+    sourcecode[```bash
+in_dir=$1
+out_dir=$2
+qualities=(50 60 70 75 80 85 90 95)
+mkdir -p "$out_dir"
+for f in "$in_dir"/train*.png; do
+  name=$(basename "$f" .png)
+  grey="$out_dir/${name}_grey.png"
+  pngtopnm "$f" | ppmtopgm | pnmtopng > "$grey"
+  for q in "${qualities[@]}"; do
+    pngtopnm "$grey" | cjpeg -quality "$q" | djpeg | pnmtopng > "$out_dir/${name}_q$(printf %02d "$q").png"
+  done
+  echo "done: $name"
+done```],caption:[Bash script for generating the synthetic dataset]
+)<code:bash>
+
 
 === Estimating Compression from Cross-Boundary Differences
 
-Fan and De Quieroz demonstrate that in a JPEG-compressed image, pixel-difference
-across block-boundaries are statistically different from pixel-differences
-within blocks. They define a cross-boundary metric $Z$ as
+Fan and de Queiroz demonstrate that in a JPEG-compressed image, pixel differences
+across block boundaries are statistically different from pixel differences
+within blocks. They define a cross-boundary metric $Z$, which I implemented in @code:fan_Z_K.
 
 
 #figure(
@@ -62,16 +81,21 @@ Z1_Z2(image) = let
 	(Z_png[p .== 4, q .== 4],Z_png[p .== 8, q .== 8])
 end;
 zhist(z) = [count(==(v), z) for v in 0:510] ./ length(z)
-# In Fan and De Quieroz, \[K = \sum_n | H_I(n) - H_{II}(n)|\]
+# In Fan and de Queiroz, \[K = \sum_n | H_I(n) - H_{II}(n)|\]
 FQ_K(image) = let (z1, z2) = Z1_Z2(image)
     sum(abs.(zhist(z1) .- zhist(z2)))
 end
-    ```],caption:[Julia source-code for computing Fan's $Z$ metric]
+    ```],caption:[Julia code for computing Fan's $Z$ metric]
 )<code:fan_Z_K>
 
-I calibrated the following decision rule: that
-images with a $K$-score greater than $ K > K_("thresh") = 0.03$ were ruled to be
+I calibrated the following decision rule:
+images with $K > K_("thresh") = 0.03$ are ruled to be
 JPEG-compressed.
+This threshold is robust on the training set, as evidenced by 
+@tab:confusion.
+With this decision procedure, I produced the verdicts in 
+@tab:cross-boundary.
+
 
 #figure(
   image("k_vs_jpeg_quality.svg", width: 100%),
@@ -121,16 +145,18 @@ JPEG-compressed.
 
 === Estimating Quantisation Factor $Q$
 
-Fan and de Quieroz prove a formual for the MLE of $hat(q)(u,v)$, which is the quantisation
+Fan and de Queiroz prove a formula for the MLE of $hat(q)(u,v)$, which is the quantisation
 factor in JPEG compression.
 
-Their method uses the following formula, which I implemented in Julia:
+Their method uses the following formula, which I implemented in @code:qhat.
 
 $ r(i,s,m,n,q) = floor.l (Y(i)[m, n][s]) / q floor.r $
 $ G(x) = e^(-6 x^2) $
 $ L(c,m, n, q) = sum_(y in c) log(sum_(k = -K)^K G(y - floor.l y / q floor.r q + k q)) + |c| log(q)  $
 $ hat(q)(i, m, n) = argmax_(q) L("coeffs"(i, m, n), m, n, q) $
-```julia
+
+#figure(
+    sourcecode[```julia
 begin
 	r(image,s ,m, n, q) = round(Y(image)[m,n][s] / q)
 	D(m) = m == 0 || m == 4 ? 2 : m == 2 || m == 6 ? 2cos(pi/4) : 2cos(pi/8)cos(pi/8)
@@ -144,16 +170,16 @@ begin
 	end
 	qhat(image, m, n) = (c = coeffs(image, m, n); argmax(q -> L(c, m, n, q), 1:60))
 end
-```
+    ```], caption: [Julia implementation of estimating $hat(q)$.]) <code:qhat>
 
+As we can observe from @fig:Q-vs-Qhat, the estimated $hat(Q)$ is a good approximation for the true $Q$.
 #figure(
   image("Q_vs_Qhat.svg", width: 100%),
     caption: [$Q$ vs $hat(Q)$],
 ) <fig:Q-vs-Qhat>
 
 
-
-
+In @tab:q-estimate, I estimate $Q$ (or $Q_2$ in the case of a double-compressed image) for each testing image.
 #figure(
   text(size: 8pt, table(
     columns: 12,
@@ -184,14 +210,14 @@ end
     caption: [Estimated JPEG quality factor $Q$ for each greyscale test image. Images marked \* were ruled uncompressed.],
 ) <tab:q-estimate>
 
-=== Single-Compression vs Double-Compression
+=== Single vs Double Compression
 
 Popescu gives a characterisation of certain features associated with double-compressed JPEGs, as opposed
 to single-compressed JPEGs.
 
-Popescu claims that the Fourier Transform of the histogram of the coefficients of a JPEG will smoothly decay in the form
-of a Laplacian. However, if there is double-compression, the double-quantisation artefacts will appear as
-spikes in the Laplaican envelope. These spikes are visible in @fig:d-vs-s-hist.
+Popescu claims that the Fourier transform of the histogram of the coefficients of a JPEG will smoothly decay in the form
+of a Laplacian. However, if there is double compression, the double-quantisation artefacts will appear as
+spikes in the Laplacian envelope. These spikes are visible in @fig:d-vs-s-hist.
 
 // #figure(
 //     image("pf_spectrum.png", width: 100%),
@@ -200,9 +226,13 @@ spikes in the Laplaican envelope. These spikes are visible in @fig:d-vs-s-hist.
 
 #figure(
     image("double_vs_single_histogram.png", width: 100%),
-    caption: [Histogram of single-compressed vs double-compressed],
+    caption: [Histograms of single-compressed vs double-compressed images],
 ) <fig:d-vs-s-hist>
 
+
+I analysed the histograms of the test images by visual inspection. At first, I attempted to develop
+a "spikiness/smoothness" metric to quantitatively discriminate between single and
+double compression; however, visual inspection proved more reliable.
 
 
 
@@ -242,7 +272,7 @@ spikes in the Laplaican envelope. These spikes are visible in @fig:d-vs-s-hist.
 
 === `rjpeg` Recompression
 
-`rjpeg` is a tool developed by Lewis for JPEG recompression. I did write my own implementation of it, but rather
+`rjpeg`#footnote[#link("https://micrological.appspot.com/cl-web/rjpeg-0.8.tar.gz")] is a tool developed by Lewis for JPEG recompression. I did not write my own implementation of it, but rather
 I downloaded and compiled the existing implementation in order to sanity-check my other results. Except in cases
 where `rjpeg` times out, it agrees with my other compressed/uncompressed classifications, and with my estimated $Q$
 quality factor to within $plus.minus 1$.
@@ -273,13 +303,23 @@ quality factor to within $plus.minus 1$.
     [grey14], [--], [0], [0], [46,128],
     [grey15], [85], [45,453], [0], [675],
   )),
-  caption: [`rjpeg` results for each greyscale test image (cropped to 1984 × 1488). QF is the IJG quality factor of the last compression; images with every Y block infeasible were never JPEG-compressed.],
+    caption: [`rjpeg` results for each greyscale test image.],
 ) <tab:rjpeg>
+
+Looking at the original JPEG gives us a more accurate
+understanding of the DCT coefficients, as can be seen in
+@fig:rjpeg_pf.
+
+#figure(
+  image("rjpeg_pf_spectrum.svg", width: 100%),
+    caption: [FFT of coefficients of recompressed images],
+) <fig:rjpeg_pf>
+
 
 == Colour Images
 
 I converted the `./dataset/colourNN.png` images into greyscale (via
-RGB $arrow.r$ YCrCb coordinate conversion) and
+RGB $arrow.r$ YCbCr coordinate conversion) and
 ran the same greyscale analysis on them. Thus, I will
 not repeat the same explanation as in the greyscale
 section.
@@ -341,7 +381,7 @@ section.
 
 #figure(
     image("double_compression_histogram_colour.svg", width: 100%),
-    caption: [Histogram coloured images],
+    caption: [Histograms of the requantised coefficients for each colour test image (converted to greyscale).],
 ) <fig:hist-coloured>
 
 
@@ -353,19 +393,19 @@ section.
     table.header[Image][Compression ruling],
     [grey01], [Double compressed],
     [grey02],  [Uncompressed],
-    [grey03], [Single Compressed],
-    [grey04],  [SingleCompressed],
+    [grey03], [Single compressed],
+    [grey04],  [Single compressed],
     [grey05],  [Uncompressed],
     [grey06],  [Uncompressed],
     [grey07],  [Uncompressed],
     [grey08],  [Single compressed],
     [grey09],  [Single compressed],
     [grey10], [Double compressed],
-    [grey11],  [Double Compressed],
+    [grey11],  [Double compressed],
     [grey12],  [Double compressed],
     [grey13],  [Single compressed],
     [grey14],  [Uncompressed],
-    [grey15],  [Single compressed],
+    [grey15],  [Double compressed],
     [colour01], [Single compressed],
     [colour02],  [Double compressed],
     [colour03], [Uncompressed],
@@ -382,7 +422,7 @@ section.
     [colour14],  [Uncompressed],
     [colour15],  [Single compressed],
   ),
-    caption: [Final],
+    caption: [Final compression-history verdict for each test image.],
 ) <tab:final>
 
 
